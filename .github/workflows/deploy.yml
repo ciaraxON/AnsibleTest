@@ -10,21 +10,34 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Ansible
+      - name: Install Ansible + SSH client
         run: |
           sudo apt update
-          sudo apt install -y ansible
+          sudo apt install -y ansible openssh-client
 
       - name: Setup SSH key
+        shell: bash
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H 192.168.1.137 >> ~/.ssh/known_hosts
+          set -euo pipefail
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          ssh-keyscan -H 192.168.1.137 >> "$HOME/.ssh/known_hosts"
+
+      - name: Test SSH connectivity (will fail if runner can't reach LAN)
+        run: |
+          ssh -i "$HOME/.ssh/id_ed25519" -o BatchMode=yes -o ConnectTimeout=10 ubuntu@192.168.1.137 "echo connected"
+
+      - name: Test Ansible connectivity
+        working-directory: ansible
+        run: |
+          ansible -m ping virtuabox
 
       - name: Run deploy playbook
         working-directory: ansible
