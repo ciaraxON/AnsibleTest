@@ -1,6 +1,6 @@
 ---
 - name: Deploy files from GitHub repo to server
-  hosts: virtuabox     # or change to "target" if your inventory group is named target
+  hosts: virtuabox
   become: true
 
   vars:
@@ -29,6 +29,11 @@
         file_type: file
       register: found_files
 
+    - name: Fail if no files were found
+      ansible.builtin.fail:
+        msg: "No files found in {{ src_repo }}"
+      when: found_files.matched == 0
+
     - name: Backup existing files if they exist
       ansible.builtin.copy:
         src: "{{ dest_dir }}/{{ item.path | basename }}"
@@ -37,7 +42,7 @@
       loop: "{{ found_files.files }}"
       ignore_errors: true
 
-    - name: Copy new files to destination (control -> remote)
+    - name: Copy new files to destination (control → remote)
       ansible.builtin.copy:
         src: "{{ item.path }}"
         dest: "{{ dest_dir }}/{{ item.path | basename }}"
