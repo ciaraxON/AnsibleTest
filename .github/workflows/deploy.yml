@@ -1,23 +1,35 @@
 name: Deploy via Ansible
 
 on:
-    push:
-        branches:
-        - main
+  push:
+    branches:
+      - main
+    paths:
+      - "filestodeploy/**"
+      - "ansible/**"
 
 jobs:
-    deploy:
-        runs-on: ubuntu-latest
+  deploy:
+    runs-on: ubuntu-latest
 
-        steps:
-        - name: Checkout repository
-          uses: actions/checkout@v3
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-        - name: Set up Ansible
-          run: |
-            sudo apt update
-            sudo apt install -y ansible
+      - name: Install Ansible
+        run: |
+          sudo apt update
+          sudo apt install -y ansible sshpass
 
-        - name: Run Ansible Playbook
-          run: |
-            ansible-playbook ansible/deploy.yml -i ansible/inventory.ini
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H 192.168.1.137 >> ~/.ssh/known_hosts
+
+      - name: Run Ansible deploy
+        run: |
+          ansible-playbook \
+            -i ansible/hosts.ini \
+            ansible/deploy.yml
