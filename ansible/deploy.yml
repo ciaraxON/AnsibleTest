@@ -1,0 +1,42 @@
+- name: Deploy files from GitHub repo to server
+  hosts:  target
+  become: true
+  vars:
+    src_repo: "{{ playbook_dir }}/../filestodeploy"
+    dest_dir: "/opt/app/destination"
+    backup_dir: "/opt/app/backups"
+
+    tasks:
+        - name: Ensure destination directory exists
+          file:
+            path: "{{ dest_dir }}"
+            state: directory
+            mode: '0755'
+
+        - name: Ensure backup directory exists
+          file:
+            path: "{{ backup_dir }}"
+            state: directory
+            mode: '0755'
+
+        - name: Find files in source repository
+          find:
+            paths: "{{ src_repo }}"
+          register: found_files
+
+        - name: Backup existing files if they exist
+          copy:
+            src: "{{ dest_dir }}/{{ item.path | basename }}"
+            dest: "{{ backup_dir }}/{{ item.path | basename }}.{{ ansible_date_time.iso8601 }}"
+            remote_src: yes
+          when:
+            - ansible.builtin.stat(path=dest_dir + '/' + (item.path | basename)).stat.exists
+          loop: "{{ files_to_copy.files }}"
+          ignore_errors: yes
+
+        - name: Copy new files to destination
+          copy:
+            src: "{{ item.path }}"
+            dest: "{{ dest_dir }}/{{ item.path | basename }}"
+            mode: '0644'
+          loop: "{{ files_to_copy.files }}"
