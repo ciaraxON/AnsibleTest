@@ -34,13 +34,19 @@
         msg: "No files found in {{ src_repo }}"
       when: found_files.matched == 0
 
+    - name: Check whether destination files exist (for backup)
+      ansible.builtin.stat:
+        path: "{{ dest_dir }}/{{ item.path | basename }}"
+      register: dest_stats
+      loop: "{{ found_files.files }}"
+
     - name: Backup existing files if they exist
       ansible.builtin.copy:
-        src: "{{ dest_dir }}/{{ item.path | basename }}"
-        dest: "{{ backup_dir }}/{{ item.path | basename }}.{{ ansible_date_time.iso8601 }}"
+        src: "{{ dest_dir }}/{{ item.item.path | basename }}"
+        dest: "{{ backup_dir }}/{{ item.item.path | basename }}.{{ ansible_date_time.iso8601 }}"
         remote_src: true
-      loop: "{{ found_files.files }}"
-      ignore_errors: true
+      loop: "{{ dest_stats.results }}"
+      when: item.stat.exists
 
     - name: Copy new files to destination (control → remote)
       ansible.builtin.copy:
