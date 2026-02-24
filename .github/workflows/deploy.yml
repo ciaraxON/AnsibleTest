@@ -18,7 +18,7 @@ jobs:
       - name: Install Ansible + SSH client
         run: |
           sudo apt update
-          sudo apt install -y ansible openssh-client
+          sudo apt install -y ansible openssh-client rsync
 
       - name: Setup SSH key
         shell: bash
@@ -29,10 +29,24 @@ jobs:
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > "$HOME/.ssh/id_ed25519"
           chmod 600 "$HOME/.ssh/id_ed25519"
           ssh-keyscan -H 192.168.1.137 >> "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Configure SSH for Ansible
+        shell: bash
+        run: |
+          cat >> "$HOME/.ssh/config" <<'EOF'
+          Host 192.168.1.137
+            HostName 192.168.1.137
+            User ubuntu
+            IdentityFile ~/.ssh/id_ed25519
+            IdentitiesOnly yes
+            StrictHostKeyChecking yes
+          EOF
+          chmod 600 "$HOME/.ssh/config"
 
       - name: Test SSH connectivity (will fail if runner can't reach LAN)
         run: |
-          ssh -i "$HOME/.ssh/id_ed25519" -o BatchMode=yes -o ConnectTimeout=10 ubuntu@192.168.1.137 "echo connected"
+          ssh -o BatchMode=yes -o ConnectTimeout=10 192.168.1.137 "echo connected"
 
       - name: Test Ansible connectivity
         working-directory: ansible
@@ -42,4 +56,4 @@ jobs:
       - name: Run deploy playbook
         working-directory: ansible
         run: |
-          ansible-playbook deploy.yml
+          ansible-playbook deploy.yml -e "release_id=${GITHUB_SHA::7}-${GITHUB_RUN_NUMBER}"

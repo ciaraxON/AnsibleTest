@@ -4,16 +4,18 @@
   become: true
 
   vars:
-    src_repo: "{{ playbook_dir }}/../filestodeploy"
-    dest_dir: "/opt/app/destination"
+    src_repo: "{{ playbook_dir }}/../filestodeploy"   # on controller
+    dest_dir: "/opt/app/destination"                  # on remote
     backup_dir: "/opt/app/backups"
+    release_id: "{{ release_id | default(ansible_date_time.iso8601_basic_short) }}"
+    rsync_backup_dir: "{{ backup_dir }}/rsync_{{ release_id }}"
 
   tasks:
     - name: Ensure destination directory exists
       ansible.builtin.file:
         path: "{{ dest_dir }}"
         state: directory
-        mode: "0755"
+        mode: "0775"
 
     - name: Ensure backup directory exists
       ansible.builtin.file:
@@ -21,36 +23,35 @@
         state: directory
         mode: "0755"
 
-    - name: Find files in source repository (on control machine)
-      delegate_to: localhost
-      become: false
-      ansible.builtin.find:
-        paths: "{{ src_repo }}"
-        file_type: file
-      register: found_files
+    - name: Ensure required packages are installed (Ubuntu)
+      ansible.builtin.apt:
+        name:
+          - rsync
+          - dos2unix
+        state: present
+        update_cache: true
 
-    - name: Fail if no files were found
-      ansible.builtin.fail:
-        msg: "No files found in {{ src_repo }}"
-      when: found_files.matched == 0
+    - name: Create timestamped backup folder for overwritten files
+      ansible.builtin.file:
+        path: "{{ rsync_backup_dir }}"
+        state: directory
+        mode: "0755"
 
-    - name: Check whether destination files exist (for backup)
-      ansible.builtin.stat:
-        path: "{{ dest_dir }}/{{ item.path | basename }}"
-      register: dest_stats
-      loop: "{{ found_files.files }}"
+    - name: Sync only new/changed files; backup any overwritten destination files
+      ansible.posix.synchronize:
+        src: "{{ src_repo }}/"
+        dest: "{{ dest_dir }}/"
+        mode: push
+        archive: true
+        delete: false
+        rsync_opts:
+          - "--backup"
+          - "--backup-dir={{ rsync_backup_dir }}"
+          - "--suffix=.bak"
+          - "--chmod=Du=rwx,Dg=rwx,Do=rx,Fu=rwx,Fg=rwx,Fo=rx"  # 775 dirs/files
 
-    - name: Backup existing files if they exist
-      ansible.builtin.copy:
-        src: "{{ dest_dir }}/{{ item.item.path | basename }}"
-        dest: "{{ backup_dir }}/{{ item.item.path | basename }}.{{ ansible_date_time.iso8601 }}"
-        remote_src: true
-      loop: "{{ dest_stats.results }}"
-      when: item.stat.exists
-
-    - name: Copy new files to destination (control → remote)
-      ansible.builtin.copy:
-        src: "{{ item.path }}"
-        dest: "{{ dest_dir }}/{{ item.path | basename }}"
-        mode: "0644"
-      loop: "{{ found_files.files }}"
+    - name: Convert destination files to Unix line endings
+      ansible.builtin.shell: |
+        find "{{ dest_dir }}" -type f -print0 | xargs -0 dos2unix
+      args:
+        executable: /bin/bash
