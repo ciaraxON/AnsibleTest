@@ -68,7 +68,7 @@
         dest: "{{ dest_dir }}/"
         mode: push
         archive: true
-        delete: falseg
+        delete: false
         rsync_path: "sudo -n rsync"
         rsync_opts:
           - "--backup"
