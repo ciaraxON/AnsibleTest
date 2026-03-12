@@ -63,18 +63,19 @@
       become: false
 
     - name: Sync changed files and back up overwritten remote files
-      ansible.posix.synchronize:
-        src: "{{ normalized_src_repo }}/"
-        dest: "{{ dest_dir }}/"
-        mode: push
-        archive: true
-        delete: false
-        rsync_path: "sudo -n rsync"
-        rsync_opts:
-          - "--backup"
-          - "--backup-dir={{ rsync_backup_dir }}"
-          - "--suffix=.bak"
-          - "--chmod=Du=rwx,Dg=rwx,Do=rx,Fu=rwx,Fg=rwx,Fo=rx"
+      ansible.builtin.command:
+        cmd: >
+          rsync -a
+          --backup
+          --backup-dir="{{ rsync_backup_dir }}"
+          --suffix=.bak
+          --itemize-changes
+          --rsync-path="sudo -n rsync"
+          --chmod=Du=rwx,Dg=rwx,Do=rx,Fu=rwx,Fg=rwx,Fo=rx
+          "{{ normalized_src_repo }}/"
+          "{{ inventory_hostname }}:{{ dest_dir }}/"
+      delegate_to: localhost
+      become: false
 
     - name: Remove normalized staging directory from controller
       ansible.builtin.file:
