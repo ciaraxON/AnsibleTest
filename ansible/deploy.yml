@@ -41,7 +41,7 @@
     - name: Sync changed files and back up overwritten remote files
       ansible.builtin.command:
         cmd: >
-          rsync -a
+          rsync -rlt
           --backup
           --backup-dir="{{ rsync_backup_dir }}"
           --suffix=.bak
