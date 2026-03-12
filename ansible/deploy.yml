@@ -10,7 +10,6 @@
     backup_dir: "/opt/app/backups"
     release_id: "{{ release_id | default(ansible_date_time.iso8601_basic_short) }}"
     rsync_backup_dir: "{{ backup_dir }}/{{ release_id }}"
-    normalized_src_repo: "/tmp/filestodeploy_{{ release_id }}"
 
   tasks:
     - name: Ensure destination directory exists
@@ -31,36 +30,13 @@
         state: directory
         mode: "0755"
 
-    - name: Ensure required packages are installed on remote host
+    - name: Ensure rsync is installed on remote host
       ansible.builtin.apt:
         name:
           - rsync
-          - dos2unix
         state: present
         update_cache: true
-
-    - name: Ensure normalized source staging directory exists on controller
-      ansible.builtin.file:
-        path: "{{ normalized_src_repo }}"
-        state: directory
-        mode: "0755"
-      delegate_to: localhost
-      become: false
-
-    - name: Copy source files to staging directory on controller
-      ansible.builtin.command:
-        cmd: >
-          rsync -a --delete "{{ src_repo }}/" "{{ normalized_src_repo }}/"
-      delegate_to: localhost
-      become: false
-
-    - name: Convert staged source files to Unix line endings on controller
-      ansible.builtin.shell: |
-        find "{{ normalized_src_repo }}" -type f -print0 | xargs -0 dos2unix
-      args:
-        executable: /bin/bash
-      delegate_to: localhost
-      become: false
+        cache_valid_time: 3600
 
     - name: Sync changed files and back up overwritten remote files
       ansible.builtin.command:
@@ -72,14 +48,7 @@
           --itemize-changes
           --rsync-path="sudo -n rsync"
           --chmod=Du=rwx,Dg=rwx,Do=rx,Fu=rwx,Fg=rwx,Fo=rx
-          "{{ normalized_src_repo }}/"
+          "{{ src_repo }}/"
           "{{ inventory_hostname }}:{{ dest_dir }}/"
-      delegate_to: localhost
-      become: false
-
-    - name: Remove normalized staging directory from controller
-      ansible.builtin.file:
-        path: "{{ normalized_src_repo }}"
-        state: absent
       delegate_to: localhost
       become: false
