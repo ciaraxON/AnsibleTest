@@ -49,6 +49,6 @@
           --rsync-path="sudo -n rsync"
           --chmod=Du=rwx,Dg=rwx,Do=rx,Fu=rwx,Fg=rwx,Fo=rx
           "{{ src_repo }}/"
-          "{{ inventory_hostname }}:{{ dest_dir }}/"
+          "{{ hostvars[inventory_hostname].ansible_host | default(inventory_hostname) }}:{{ dest_dir }}/"
       delegate_to: localhost
       become: false
