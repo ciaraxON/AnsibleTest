@@ -2,13 +2,15 @@
 - name: Deploy files from GitHub repo to server
   hosts: virtuabox
   become: true
+  gather_facts: true
 
   vars:
-    src_repo: "{{ playbook_dir }}/../filestodeploy"   # on controller
-    dest_dir: "/opt/app/destination"                  # on remote
+    src_repo: "{{ playbook_dir }}/../filestodeploy"
+    dest_dir: "/opt/app/destination"
     backup_dir: "/opt/app/backups"
     release_id: "{{ release_id | default(ansible_date_time.iso8601_basic_short) }}"
-    rsync_backup_dir: "{{ backup_dir }}/rsync_{{ release_id }}"
+    rsync_backup_dir: "{{ backup_dir }}/{{ release_id }}"
+    normalized_src_repo: "/tmp/filestodeploy_{{ release_id }}"
 
   tasks:
     - name: Ensure destination directory exists
@@ -17,13 +19,19 @@
         state: directory
         mode: "0775"
 
-    - name: Ensure backup directory exists
+    - name: Ensure backup root directory exists
       ansible.builtin.file:
         path: "{{ backup_dir }}"
         state: directory
         mode: "0755"
 
-    - name: Ensure required packages are installed (Ubuntu)
+    - name: Ensure release backup directory exists
+      ansible.builtin.file:
+        path: "{{ rsync_backup_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Ensure required packages are installed on remote host
       ansible.builtin.apt:
         name:
           - rsync
@@ -31,27 +39,46 @@
         state: present
         update_cache: true
 
-    - name: Create timestamped backup folder for overwritten files
+    - name: Ensure normalized source staging directory exists on controller
       ansible.builtin.file:
-        path: "{{ rsync_backup_dir }}"
+        path: "{{ normalized_src_repo }}"
         state: directory
         mode: "0755"
+      delegate_to: localhost
+      become: false
 
-    - name: Sync only new/changed files; backup any overwritten destination files
+    - name: Copy source files to staging directory on controller
+      ansible.builtin.command:
+        cmd: >
+          rsync -a --delete "{{ src_repo }}/" "{{ normalized_src_repo }}/"
+      delegate_to: localhost
+      become: false
+
+    - name: Convert staged source files to Unix line endings on controller
+      ansible.builtin.shell: |
+        find "{{ normalized_src_repo }}" -type f -print0 | xargs -0 dos2unix
+      args:
+        executable: /bin/bash
+      delegate_to: localhost
+      become: false
+
+    - name: Sync changed files and back up overwritten remote files
       ansible.posix.synchronize:
-        src: "{{ src_repo }}/"
+        src: "{{ normalized_src_repo }}/"
         dest: "{{ dest_dir }}/"
         mode: push
         archive: true
-        delete: false
+        delete: falseg
+        rsync_path: "sudo -n rsync"
         rsync_opts:
           - "--backup"
           - "--backup-dir={{ rsync_backup_dir }}"
           - "--suffix=.bak"
-          - "--chmod=Du=rwx,Dg=rwx,Do=rx,Fu=rwx,Fg=rwx,Fo=rx"  # 775 dirs/files
+          - "--chmod=Du=rwx,Dg=rwx,Do=rx,Fu=rwx,Fg=rwx,Fo=rx"
 
-    - name: Convert destination files to Unix line endings
-      ansible.builtin.shell: |
-        find "{{ dest_dir }}" -type f -print0 | xargs -0 dos2unix
-      args:
-        executable: /bin/bash
+    - name: Remove normalized staging directory from controller
+      ansible.builtin.file:
+        path: "{{ normalized_src_repo }}"
+        state: absent
+      delegate_to: localhost
+      become: false

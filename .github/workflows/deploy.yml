@@ -34,7 +34,7 @@ jobs:
       - name: Configure SSH for Ansible
         shell: bash
         run: |
-          cat >> "$HOME/.ssh/config" <<'EOF'
+          cat > "$HOME/.ssh/config" <<'EOF'
           Host 192.168.1.137
             HostName 192.168.1.137
             User ubuntu
